@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8-Puzzle con Búsqueda A* | Laboratorio Educativo</title>
+    <meta name="description" content="Visualizador interactivo del algoritmo de búsqueda A* resolviendo el 8-Puzzle con trazabilidad paso a paso y grafo de exploración.">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-content">
+            <div class="header-titles">
+                <h1>8-Puzzle con Búsqueda A*</h1>
+                <p class="subtitle">Laboratorio didáctico interactivo de Inteligencia Artificial</p>
+            </div>
+            <div class="header-badges">
+                <span id="heuristic-badge" class="badge badge-info">Heurística: Fichas fuera de lugar</span>
+                <span id="status-badge" class="badge badge-idle">Listo</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="app-layout">
+        <!-- Columna Izquierda: Tablero interactivo y controles -->
+        <section class="panel puzzle-panel" aria-label="Tablero y controles de juego">
+            <div class="panel-header">
+                <h2>Tablero Interactivo</h2>
+                <span class="panel-hint">Haz clic en una ficha contigua al espacio vacío (0) para moverla</span>
+            </div>
+
+            <div class="boards-wrapper">
+                <!-- Tablero Principal 3x3 -->
+                <div class="board-container">
+                    <div class="board-label">Estado Actual</div>
+                    <div id="puzzle-board" class="puzzle-grid" role="grid" aria-label="Tablero 3x3 del 8-Puzzle">
+                        <!-- Las 9 casillas se generan dinámicamente con JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Mini Tablero Objetivo de Referencia -->
+                <div class="goal-container">
+                    <div class="board-label">Estado Objetivo</div>
+                    <div class="goal-grid" aria-label="Tablero objetivo">
+                        <div class="goal-cell">1</div>
+                        <div class="goal-cell">2</div>
+                        <div class="goal-cell">3</div>
+                        <div class="goal-cell">4</div>
+                        <div class="goal-cell">5</div>
+                        <div class="goal-cell">6</div>
+                        <div class="goal-cell">7</div>
+                        <div class="goal-cell">8</div>
+                        <div class="goal-cell goal-cell-empty">0</div>
+                    </div>
+                    <div class="goal-note">Meta fijada: [1,2,3,4,5,6,7,8,0]</div>
+                </div>
+            </div>
+
+            <!-- Botones Principales de Acción -->
+            <div class="action-buttons">
+                <button id="btn-random" class="btn btn-secondary" title="Generar un tablero aleatorio con solución garantizada">
+                    🎲 Tablero Resoluble
+                </button>
+                <button id="btn-solve" class="btn btn-primary" title="Enviar tablero a la API para resolver con A*">
+                    🎯 Resolver con A*
+                </button>
+                <button id="btn-reset" class="btn btn-outline" title="Reiniciar tablero al estado inicial">
+                    🔄 Reiniciar
+                </button>
+            </div>
+
+            <!-- Mensajes y Alertas del Sistema -->
+            <div id="alert-banner" class="alert-banner hidden" role="alert">
+                <span id="alert-icon" class="alert-icon">ℹ️</span>
+                <span id="alert-text" class="alert-text"></span>
+            </div>
+
+            <!-- Controles de Navegación Paso a Paso -->
+            <div class="playback-card" aria-label="Controles de reproducción paso a paso">
+                <div class="playback-header">
+                    <h3>Reproducción de la Solución</h3>
+                    <span id="step-counter" class="step-indicator">Paso 0 de 0</span>
+                </div>
+
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                </div>
+
+                <div class="playback-controls">
+                    <button id="btn-first" class="btn-icon" title="Primer paso" disabled aria-label="Primer paso">⏮</button>
+                    <button id="btn-prev" class="btn-icon" title="Paso anterior" disabled aria-label="Paso anterior">◀</button>
+                    <button id="btn-play" class="btn-icon btn-play" title="Reproducir automáticamente" disabled aria-label="Reproducir">▶</button>
+                    <button id="btn-next" class="btn-icon" title="Paso siguiente" disabled aria-label="Paso siguiente">▶</button>
+                    <button id="btn-last" class="btn-icon" title="Último paso" disabled aria-label="Último paso">⏭</button>
+                </div>
+
+                <div class="playback-options">
+                    <label for="speed-select" class="speed-label">Velocidad:</label>
+                    <select id="speed-select" class="select-control">
+                        <option value="1200">Lenta (1.2s)</option>
+                        <option value="700" selected>Normal (0.7s)</option>
+                        <option value="350">Rápida (0.35s)</option>
+                    </select>
+                </div>
+
+                <!-- Detalle del Paso Activo -->
+                <div class="step-details">
+                    <div class="step-metric-card">
+                        <span class="metric-title">Movimiento</span>
+                        <span id="metric-action" class="metric-value">-</span>
+                    </div>
+                    <div class="step-metric-card">
+                        <span class="metric-title">g(n) (Pasos)</span>
+                        <span id="metric-g" class="metric-value">0</span>
+                    </div>
+                    <div class="step-metric-card">
+                        <span class="metric-title">h(n) (Heurística)</span>
+                        <span id="metric-h" class="metric-value">0</span>
+                    </div>
+                    <div class="step-metric-card highlight">
+                        <span class="metric-title">f(n) = g + h</span>
+                        <span id="metric-f" class="metric-value">0</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Columna Derecha: Visualización del Grafo, Estadísticas y Módulo Didáctico -->
+        <section class="panel analytics-panel" aria-label="Grafo de búsqueda y estadísticas">
+            <!-- Pestañas Superiores -->
+            <div class="tabs-nav" role="tablist">
+                <button id="tab-btn-graph" class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-graph">
+                    🌐 Grafo de Búsqueda
+                </button>
+                <button id="tab-btn-stats" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-stats">
+                    📊 Estadísticas Reales
+                </button>
+                <button id="tab-btn-learn" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-learn">
+                    📖 Explicación Didáctica
+                </button>
+            </div>
+
+            <!-- Contenido Pestaña 1: Grafo de Búsqueda -->
+            <div id="tab-graph" class="tab-content active" role="tabpanel">
+                <div class="graph-toolbar">
+                    <div class="graph-toolbar-group">
+                        <label for="graph-node-limit" class="toolbar-label">Límite de nodos:</label>
+                        <select id="graph-node-limit" class="select-control">
+                            <option value="20">20 nodos</option>
+                            <option value="40" selected>40 nodos</option>
+                            <option value="80">80 nodos</option>
+                            <option value="999">Todos</option>
+                        </select>
+                    </div>
+                    <div class="graph-legend">
+                        <span class="legend-item"><span class="legend-dot dot-path"></span>Ruta de Solución</span>
+                        <span class="legend-item"><span class="legend-dot dot-active"></span>Paso Actual</span>
+                        <span class="legend-item"><span class="legend-dot dot-explored"></span>Explorado</span>
+                    </div>
+                </div>
+
+                <div id="graph-warning" class="graph-note hidden">
+                    ℹ️ <strong>Representación parcial:</strong> Se muestran <span id="graph-visible-count">0</span> de <span id="graph-total-count">0</span> nodos explorados para optimizar el rendimiento y legibilidad. La solución y estadísticas del algoritmo permanecen intactas.
+                </div>
+
+                <div class="graph-viewport-wrapper">
+                    <svg id="search-graph-svg" class="graph-svg" viewBox="0 0 800 500" preserveAspectRatio="xMidYMid meet" aria-label="Visualización gráfica de la búsqueda A*">
+                        <text x="400" y="250" text-anchor="middle" fill="#94a3b8" font-size="14">
+                            Presiona "Resolver con A*" para generar el grafo de búsqueda.
+                        </text>
+                    </svg>
+                </div>
+                <p class="graph-caption">
+                    Cada nodo muestra el identificador de estado y su evaluación f(n). Haz clic en un nodo para consultar sus datos.
+                </p>
+            </div>
+
+            <!-- Contenido Pestaña 2: Estadísticas -->
+            <div id="tab-stats" class="tab-content" role="tabpanel">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">🎯</div>
+                        <div class="stat-body">
+                            <span class="stat-label">Longitud de Solución</span>
+                            <span id="stat-cost" class="stat-number">-</span>
+                            <span class="stat-desc">Movimientos mínimos óptimos</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">🔍</div>
+                        <div class="stat-body">
+                            <span class="stat-label">Nodos Expandidos</span>
+                            <span id="stat-expanded" class="stat-number">-</span>
+                            <span class="stat-desc">Estados extraídos de la cola</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">📦</div>
+                        <div class="stat-body">
+                            <span class="stat-label">Nodos Generados</span>
+                            <span id="stat-discovered" class="stat-number">-</span>
+                            <span class="stat-desc">Total de estados descubiertos</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">📐</div>
+                        <div class="stat-body">
+                            <span class="stat-label">Máx. Frontera</span>
+                            <span id="stat-frontier" class="stat-number">-</span>
+                            <span class="stat-desc">Pico de la cola de prioridad</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">⚖️</div>
+                        <div class="stat-body">
+                            <span class="stat-label">Inversiones Iniciales</span>
+                            <span id="stat-inversions" class="stat-number">-</span>
+                            <span class="stat-desc">Paridad par = resoluble</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">⏱️</div>
+                        <div class="stat-body">
+                            <span class="stat-label">Tiempo de Búsqueda</span>
+                            <span id="stat-time-client" class="stat-number">-</span>
+                            <span id="stat-time-note" class="stat-desc">Medido en cliente (la API no reporta tiempo de servidor)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="transparency-note">
+                    <strong>Transparencia de datos:</strong> Los valores de longitud de solución, nodos expandidos, nodos generados, inversiones y tamaño de frontera provienen directamente de la respuesta del backend Flask. El tiempo de cómputo no es calculado por el servidor y se informa mediante la medición del ciclo de petición en el navegador sin inventar estadísticas.
+                </div>
+            </div>
+
+            <!-- Contenido Pestaña 3: Explicación Didáctica -->
+            <div id="tab-learn" class="tab-content" role="tabpanel">
+                <div class="learn-container">
+                    <div class="concept-card">
+                        <h3>¿Cómo toma decisiones el algoritmo A*?</h3>
+                        <p>
+                            A* es un algoritmo de búsqueda informada que encuentra la ruta óptima minimizando la función de evaluación:
+                        </p>
+                        <div class="formula-box">
+                            <strong>f(n) = g(n) + h(n)</strong>
+                        </div>
+                        <ul class="concept-list">
+                            <li>
+                                <strong>g(n) (Costo acumulado):</strong> Número exacto de movimientos ejecutados desde el tablero inicial hasta el estado actual. Cada movimiento suma 1.
+                            </li>
+                            <li>
+                                <strong>h(n) (Heurística de fichas fuera de lugar):</strong> Cantidad de fichas (1 al 8) que no se encuentran en su posición objetivo. Es <em>admisible</em> porque nunca sobreestima el costo real.
+                            </li>
+                            <li>
+                                <strong>f(n) (Costo estimado total):</strong> A* siempre extrae de la cola de prioridad el nodo que tenga el <strong>menor valor de f(n)</strong>. En caso de empate, desempata priorizando el nodo con menor h(n) (más cercano a la meta).
+                            </li>
+                            <li>
+                                <strong>Expansión de un estado:</strong> Significa tomar el nodo con menor f(n), verificar si alcanzó la meta, y generar sus sucesores mediante los movimientos legales del espacio vacío. Si un sucesor ya fue registrado con un costo menor o igual, se descarta para evitar ciclos.
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Explicación Dinámica del Paso Activo -->
+                    <div class="live-explanation-card">
+                        <h3>Análisis del Paso Seleccionado</h3>
+                        <div id="live-explanation-text">
+                            Aún no se ha realizado ninguna búsqueda. Selecciona un tablero y pulsa "Resolver con A*" para visualizar el análisis paso a paso en tiempo real.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="app-footer">
+        <p>Proyecto Educativo 8-Puzzle | Inteligencia Artificial &bull; Flask &bull; Algoritmo de Búsqueda A*</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
